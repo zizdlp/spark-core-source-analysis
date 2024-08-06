@@ -53,8 +53,6 @@ classDiagram
     DiskStore --> EncryptedBlockData
 ```
 
-这个类图不仅展示了类之间的关系，还详细注释了每个属性和方法的用途。这样可以帮助更好地理解 `DiskStore` 及其辅助类的功能和结构。
-
 ## DiskStore 类
 
 `DiskStore` 负责将块写入磁盘，并提供读取和删除这些块的方法。它使用 `DiskBlockManager` 来管理磁盘文件，并支持加密块的处理。该类还跟踪每个块的大小。
@@ -102,10 +100,10 @@ def put(blockId: BlockId)(writeFunc: WritableByteChannel => Unit): Unit = {
   if (shuffleServiceFetchRddEnabled) {
     diskManager.createWorldReadableFile(file)
   }
-  val out = new CountingWritableChannel(openForWrite(file))
+  val out = new CountingWritableChannel(openForWrite(file)) // 打开的文件句柄
   var threwException: Boolean = true
   try {
-    writeFunc(out)
+    writeFunc(out)//回调函数，写入数据到out
     blockSizes.put(blockId, out.getCount)
     threwException = false
   } finally {
