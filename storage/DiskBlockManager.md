@@ -136,6 +136,16 @@ val file = getFile("block123")
 println(file) // 例如：/data/spark1/00/block123
 ```
 
+### Block vs fileName
+
+可以根据文件名或者blockId获取文件,具体的，若通过blockId,如下代码所示，实际上仍然是通过文件名获取文件
+
+```scala
+  def containsBlock(blockId: BlockId): Boolean = {
+    getFile(blockId.name).exists()
+  }
+```
+
 ### 总结
 
 `localDirs` 和 `subDirs` 用于管理数据块的存储目录，通过将数据块分散到多个子目录中，可以提高性能并避免单个目录中过多文件的问题。这种设计使得 Spark 在处理大规模数据时能够更有效地管理存储资源。
