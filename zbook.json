@@ -26,7 +26,7 @@
           },
           {
             "title": "DiskBlockManager",
-            "relative_path": "storage/DiskBlockManager",
+            "relative_path": "storage/diskblockmanager",
             "isdir": false,
             "sublayouts": null
           }
