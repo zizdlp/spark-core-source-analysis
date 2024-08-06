@@ -29,6 +29,12 @@
             "relative_path": "storage/diskblockmanager",
             "isdir": false,
             "sublayouts": null
+          },
+          {
+            "title": "DiskStore",
+            "relative_path": "storage/diskstore",
+            "isdir": false,
+            "sublayouts": null
           }
         ]
       }
