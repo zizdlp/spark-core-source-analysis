@@ -35,6 +35,12 @@
             "relative_path": "storage/diskstore",
             "isdir": false,
             "sublayouts": null
+          },
+          {
+            "title": "BlockInfoManager",
+            "relative_path": "storage/blockinfomanager",
+            "isdir": false,
+            "sublayouts": null
           }
         ]
       }
