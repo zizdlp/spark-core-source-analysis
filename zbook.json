@@ -41,6 +41,12 @@
             "relative_path": "storage/blockinfomanager",
             "isdir": false,
             "sublayouts": null
+          },
+          {
+            "title": "MemoryManager",
+            "relative_path": "storage/memorymanager",
+            "isdir": false,
+            "sublayouts": null
           }
         ]
       }
