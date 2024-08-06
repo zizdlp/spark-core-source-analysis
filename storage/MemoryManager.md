@@ -4,69 +4,6 @@
 
 `MemoryManager` 类是 Spark 内存管理的抽象基类，负责在执行内存和存储内存之间分配和管理内存。它使用 `StorageMemoryPool` 和 `ExecutionMemoryPool` 来管理不同类型的内存池，并根据配置来处理堆内存和非堆内存的使用。
 
-### 主要字段和方法
-
-1. **字段**
-
-   - `onHeapStorageMemoryPool` 和 `offHeapStorageMemoryPool`
-     - `StorageMemoryPool` 的实例，用于管理堆内存和非堆内存中的存储内存。
-
-   - `onHeapExecutionMemoryPool` 和 `offHeapExecutionMemoryPool`
-     - `ExecutionMemoryPool` 的实例，用于管理堆内存和非堆内存中的执行内存。
-
-   - `maxOffHeapMemory`
-     - 最大的非堆内存大小。
-
-   - `offHeapStorageMemory`
-     - 分配给存储的非堆内存大小。
-
-   - `tungstenMemoryMode`
-     - 指示 Tungsten 内存分配是使用堆内存还是非堆内存。
-
-   - `defaultPageSizeBytes`
-     - 默认的页面大小。
-
-   - `pageSizeBytes`
-     - 配置的页面大小。
-
-   - `tungstenMemoryAllocator`
-     - 用于 Tungsten 内存的分配器。
-
-2. **方法**
-
-   - `acquireStorageMemory`
-     - 请求存储内存，必要时会回收已有内存。
-
-   - `acquireUnrollMemory`
-     - 请求解压内存，允许子类区分存储内存和解压内存的行为。
-
-   - `acquireExecutionMemory`
-     - 请求执行内存，用于当前任务。
-
-   - `releaseExecutionMemory`
-     - 释放执行内存。
-
-   - `releaseAllExecutionMemoryForTask`
-     - 释放所有执行内存。
-
-   - `releaseStorageMemory`
-     - 释放存储内存。
-
-   - `releaseAllStorageMemory`
-     - 释放所有存储内存。
-
-   - `releaseUnrollMemory`
-     - 释放解压内存。
-
-   - `executionMemoryUsed` 和 `storageMemoryUsed`
-     - 获取当前使用的执行内存和存储内存。
-
-   - `getExecutionMemoryUsageForTask`
-     - 获取给定任务的执行内存使用情况。
-
-   - `tungstenMemoryAllocator`
-     - 根据内存模式选择合适的内存分配器。
-
 ### `Mermaid` 图表
 
 以下是 `MemoryManager` 类的 `Mermaid` 图表，展示了主要字段和方法的关系及其注释。
@@ -153,6 +90,69 @@ classDiagram
   - `acquireExecutionMemory` 用于请求执行内存。
   - `releaseExecutionMemory` 和 `releaseStorageMemory` 用于释放内存。
   - `executionMemoryUsed` 和 `storageMemoryUsed` 提供当前使用的内存量。
+
+### 主要字段和方法
+
+1. **字段**
+
+   - `onHeapStorageMemoryPool` 和 `offHeapStorageMemoryPool`
+     - `StorageMemoryPool` 的实例，用于管理堆内存和非堆内存中的存储内存。
+
+   - `onHeapExecutionMemoryPool` 和 `offHeapExecutionMemoryPool`
+     - `ExecutionMemoryPool` 的实例，用于管理堆内存和非堆内存中的执行内存。
+
+   - `maxOffHeapMemory`
+     - 最大的非堆内存大小。
+
+   - `offHeapStorageMemory`
+     - 分配给存储的非堆内存大小。
+
+   - `tungstenMemoryMode`
+     - 指示 Tungsten 内存分配是使用堆内存还是非堆内存。
+
+   - `defaultPageSizeBytes`
+     - 默认的页面大小。
+
+   - `pageSizeBytes`
+     - 配置的页面大小。
+
+   - `tungstenMemoryAllocator`
+     - 用于 Tungsten 内存的分配器。
+
+2. **方法**
+
+   - `acquireStorageMemory`
+     - 请求存储内存，必要时会回收已有内存。
+
+   - `acquireUnrollMemory`
+     - 请求解压内存，允许子类区分存储内存和解压内存的行为。
+
+   - `acquireExecutionMemory`
+     - 请求执行内存，用于当前任务。
+
+   - `releaseExecutionMemory`
+     - 释放执行内存。
+
+   - `releaseAllExecutionMemoryForTask`
+     - 释放所有执行内存。
+
+   - `releaseStorageMemory`
+     - 释放存储内存。
+
+   - `releaseAllStorageMemory`
+     - 释放所有存储内存。
+
+   - `releaseUnrollMemory`
+     - 释放解压内存。
+
+   - `executionMemoryUsed` 和 `storageMemoryUsed`
+     - 获取当前使用的执行内存和存储内存。
+
+   - `getExecutionMemoryUsageForTask`
+     - 获取给定任务的执行内存使用情况。
+
+   - `tungstenMemoryAllocator`
+     - 根据内存模式选择合适的内存分配器。
 
 在 `MemoryManager` 类中，各内存池的大小确定过程如下：
 
