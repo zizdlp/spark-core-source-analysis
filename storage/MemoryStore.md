@@ -18,6 +18,9 @@ classDiagram
 
    - putBytes[T](BlockId blockId, Long size, MemoryMode memoryMode, Function0[ChunkedByteBuffer] _bytes)// 将块作为字节存储到内存中。
    - putIterator[T](BlockId blockId, Iterator[T] values, ClassTag[T] classTag, MemoryMode memoryMode, ValuesHolder[T] valuesHolder)// 将块作为值或字节存储到内存中。
+   - putIteratorAsValues(BlockId blockId, Iterator[T] values, ClassTag[T] classTag, MemoryMode memoryMode) // 按照value存储，不涉及序列化：DeserializedValuesHolder
+   - putIteratorAsBytes(BlockId blockId, Iterator[T] values, ClassTag[T] classTag, MemoryMode memoryMode,) // 按照bytes存储，序列化:SerializedValuesHolder
+
    }
 
 
@@ -66,6 +69,19 @@ classDiagram
       + val serializationStream: SerializationStream
       + storeValue(value: T):serializationStream.writeObject(value)(classTag)
    }
+
+   MemoryStore --> DeserializedValuesHolder :使用
+   class DeserializedValuesHolder {
+      + var vector = new SizeTrackingVector[T]()(classTag)
+      + var arrayValues: Array[T] = null
+      + storeValue(value: T): Unit//do:vector+=value
+
+   }
+   class SizeTrackingVector {
+      //可以认为是一个支持append的vector
+   }
+   DeserializedValuesHolder -->SizeTrackingVector:使用
+   DeserializedValuesHolder --> ValuesHolder :继承
 
    MemoryStore --> blockEvictionHandler : 使用
    class blockEvictionHandler {
@@ -180,38 +196,6 @@ private[spark] class SerializerManager(
 - `conf`: Spark 配置对象。
 - `encryptionKey`: 可选的加密密钥。
 
-这个类还有一个辅助构造方法：
-
-```scala
-def this(defaultSerializer: Serializer, conf: SparkConf) = this(defaultSerializer, conf, None)
-```
-
-### 私有变量和懒加载变量
-
-```scala
-private[this] val kryoSerializer = new KryoSerializer(conf)
-private[this] val stringClassTag: ClassTag[String] = implicitly[ClassTag[String]]
-private[this] val primitiveAndPrimitiveArrayClassTags: Set[ClassTag[_]] = {
-  val primitiveClassTags = Set[ClassTag[_]](
-    ClassTag.Boolean,
-    ClassTag.Byte,
-    ClassTag.Char,
-    ClassTag.Double,
-    ClassTag.Float,
-    ClassTag.Int,
-    ClassTag.Long,
-    ClassTag.Null,
-    ClassTag.Short
-  )
-  val arrayClassTags = primitiveClassTags.map(_.wrap)
-  primitiveClassTags ++ arrayClassTags
-}
-```
-
-- `kryoSerializer`: 使用 Kryo 序列化的实例。
-- `stringClassTag`: 字符串的类标签。
-- `primitiveAndPrimitiveArrayClassTags`: 基本类型和基本类型数组的类标签集合。
-
 ### 配置相关变量
 
 ```scala
@@ -227,22 +211,6 @@ private lazy val compressionCodec: CompressionCodec = CompressionCodec.createCod
 - `compressionCodec` 是用于压缩的编解码器，它是一个懒加载变量，只有在第一次使用时才会初始化。
 
 ### 方法
-
-#### 设置默认类加载器
-
-```scala
-def setDefaultClassLoader(classLoader: ClassLoader): Unit = {
-  kryoSerializer.setDefaultClassLoader(classLoader)
-}
-```
-
-#### 判断是否可以使用 Kryo
-
-```scala
-def canUseKryo(ct: ClassTag[_]): Boolean = {
-  primitiveAndPrimitiveArrayClassTags.contains(ct) || ct == stringClassTag
-}
-```
 
 #### 获取序列化器
 
@@ -289,6 +257,13 @@ private def shouldCompress(blockId: BlockId): Boolean = {
 #### 包装输入/输出流
 
 ```scala
+def wrapForCompression(blockId: BlockId, s: OutputStream): OutputStream = {
+  if (shouldCompress(blockId)) compressionCodec.compressedOutputStream(s) else s
+}
+
+def wrapForCompression(blockId: BlockId, s: InputStream): InputStream = {
+  if (shouldCompress(blockId)) compressionCodec.compressedInputStream(s) else s
+}
 def wrapStream(blockId: BlockId, s: InputStream): InputStream = {
   wrapForCompression(blockId, wrapForEncryption(s))
 }
@@ -297,25 +272,6 @@ def wrapStream(blockId: BlockId, s: OutputStream): OutputStream = {
   wrapForCompression(blockId, wrapForEncryption(s))
 }
 
-def wrapForEncryption(s: InputStream): InputStream = {
-  encryptionKey
-    .map { key => CryptoStreamUtils.createCryptoInputStream(s, conf, key) }
-    .getOrElse(s)
-}
-
-def wrapForEncryption(s: OutputStream): OutputStream = {
-  encryptionKey
-    .map { key => CryptoStreamUtils.createCryptoOutputStream(s, conf, key) }
-    .getOrElse(s)
-}
-
-def wrapForCompression(blockId: BlockId, s: OutputStream): OutputStream = {
-  if (shouldCompress(blockId)) compressionCodec.compressedOutputStream(s) else s
-}
-
-def wrapForCompression(blockId: BlockId, s: InputStream): InputStream = {
-  if (shouldCompress(blockId)) compressionCodec.compressedInputStream(s) else s
-}
 ```
 
 - 这些方法用于包装输入和输出流，以便添加加密和压缩功能。
@@ -366,6 +322,41 @@ def dataDeserializeStream[T](
 
 - `dataSerializeStream` 和 `dataSerialize` 用于将数据序列化到流或 `ChunkedByteBuffer` 中。
 - `dataDeserializeStream` 用于从输入流中反序列化数据。
+
+## SerializedValuesHolder
+
+SerializedValuesHolder是用于存储序列化值的持有者类。该类封装了序列化值的存储和管理逻辑，主要用于 Spark 的存储模块
+
+```scala
+class SerializedValuesHolder[T](
+    blockId: BlockId,
+    chunkSize: Int,
+    classTag: ClassTag[T],
+    memoryMode: MemoryMode,
+    serializerManager: SerializerManager) extends ValuesHolder[T] {
+```
+
+SerializedValuesHolder存储对象时，调用`storeValue(value: T)`,将对象写入`serializationStream`,最后在unroll结束后调用getBuilder()关闭流，将流转为buffer。
+
+```scala
+val serializationStream: SerializationStream = {
+  val autoPick = !blockId.isInstanceOf[StreamBlockId]
+  val ser = serializerManager.getSerializer(classTag, autoPick).newInstance()
+  ser.serializeStream(serializerManager.wrapForCompression(blockId, redirectableStream))
+}
+override def storeValue(value: T): Unit = {
+  serializationStream.writeObject(value)(classTag)
+}
+override def getBuilder(): MemoryEntryBuilder[T] = new MemoryEntryBuilder[T] {
+   // We successfully unrolled the entirety of this block
+   serializationStream.close()
+
+   override def preciseSize: Long = bbos.size
+
+   override def build(): MemoryEntry[T] =
+   SerializedMemoryEntry[T](bbos.toChunkedByteBuffer, memoryMode, classTag)
+}
+```
 
 ### 总结
 
