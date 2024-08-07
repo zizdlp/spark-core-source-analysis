@@ -22,7 +22,49 @@ classDiagram
 
 
    class SerializerManager {
+      + compressionCodec // 编解码器
+      + getSerializer(ct: ClassTag[_], autoPick: Boolean): Serializer
+      + shouldCompress(blockId: BlockId): Boolean
+      + dataSerializeStream[T: ClassTag](blockId: BlockId,outputStream: OutputStream,values: Iterator[T]) // 对象序列化为流
+   }
+   SerializerManager --> Serializer : 使用
+   class Serializer {
+      + newInstance(): SerializerInstance
+   }
+   Serializer --> SerializerInstance : 使用
+   class SerializerInstance {
+      + serialize[T: ClassTag](t: T): ByteBuffer // 将对象序列化为buffer
+      + deserialize[T: ClassTag](bytes: ByteBuffer): T //将buffer反序列化为对象
+      + deserialize[T: ClassTag](bytes: ByteBuffer, loader: ClassLoader): T
+      + serializeStream(s: OutputStream): SerializationStream
+      + deserializeStream(s: InputStream): DeserializationStream
+   }
+   SerializerInstance --> SerializationStream :使用
+   SerializerInstance --> DeserializationStream :使用
+   class SerializationStream {
+      + writeObject[T: ClassTag](t: T): SerializationStream; //将对象写入流
+      + writeKey[T: ClassTag](key: T): SerializationStream = writeObject(key);
+      + writeValue[T: ClassTag](value: T): SerializationStream = writeObject(value);
+      + flush(): Unit;
+   }
+   class DeserializationStream {
+      + readObject[T: ClassTag](): T; //读取流为对象
+      + readKey[T: ClassTag](): T = readObject[T]();
+      + readValue[T: ClassTag](): T = readObject[T]();
+   }
 
+
+   class ValuesHolder {
+      + storeValue(value: T)
+      + estimatedSize()
+      + getBuilder()
+   }
+   SerializedValuesHolder --> ValuesHolder : 继承
+   SerializedValuesHolder --> SerializerManager: 使用
+   MemoryStore --> SerializedValuesHolder :使用
+   class SerializedValuesHolder {
+      + val serializationStream: SerializationStream
+      + storeValue(value: T):serializationStream.writeObject(value)(classTag)
    }
 
    MemoryStore --> blockEvictionHandler : 使用
