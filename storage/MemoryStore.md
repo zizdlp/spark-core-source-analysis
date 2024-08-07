@@ -358,11 +358,11 @@ override def getBuilder(): MemoryEntryBuilder[T] = new MemoryEntryBuilder[T] {
 }
 ```
 
-### 总结
+### SerializerManager 总结
 
 `SerializerManager` 类提供了对序列化、压缩和加密的全面管理。通过配置和上下文自动选择合适的序列化器，并通过包装输入输出流实现对数据的压缩和加密。这样设计的目的在于提高 Spark 处理数据的灵活性和安全性。
 
-## 源码分析
+## MemoryStore 源码分析
 
 ### 类定义和构造函数
 
