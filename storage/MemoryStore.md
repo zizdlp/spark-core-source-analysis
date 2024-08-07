@@ -1,10 +1,10 @@
 # MemoryStore
 
-`MemoryStore` 类是 Spark 内存存储的一部分，用于在内存中存储块。这些块可以是反序列化的 Java 对象数组或序列化的 ByteBuffer。以下是代码的主要部分和功能的详细解释：
+`MemoryStore` 类是 Spark 内存存储的一部分，用于在内存中存储块。这些块可以是反序列化的 Java 对象数组或序列化的 ByteBuffer。
 
 ## 类图
 
-以下是 `MemoryStore` 类的 Mermaid 图和每个成员的注释：
+以下是 `MemoryStore`以及依赖类的类图和每个成员的注释：
 
 ```mermaid
 classDiagram
@@ -13,11 +13,21 @@ classDiagram
    -BlockInfoManager blockInfoManager //管理块数据metadata
    -SerializerManager serializerManager
    -MemoryManager memoryManager //管理内存的分配
-   -BlockEvictionHandler blockEvictionHandler
+   -BlockEvictionHandler blockEvictionHandler//用于内存不足时释放空间（比如到磁盘）
    -LinkedHashMap~BlockId, MemoryEntry~ entries//实际数据的存储
 
    - putBytes[T](BlockId blockId, Long size, MemoryMode memoryMode, Function0[ChunkedByteBuffer] _bytes)// 将块作为字节存储到内存中。
    - putIterator[T](BlockId blockId, Iterator[T] values, ClassTag[T] classTag, MemoryMode memoryMode, ValuesHolder[T] valuesHolder)// 将块作为值或字节存储到内存中。
+   }
+
+
+   class SerializerManager {
+
+   }
+
+   MemoryStore --> blockEvictionHandler : 使用
+   class blockEvictionHandler {
+      + dropFromMemory(blockId: BlockId,data)
    }
    MemoryStore --> MemoryManager : 使用
    class MemoryManager {
@@ -56,7 +66,12 @@ classDiagram
    }
 
    class BlockId {
-      // 这里可以添加 BlockId 类的成员和方法
+      + name: String //unique identifier
+      + isRDD // 是否是RDD Block
+      + isShuffle 
+      + isShuffleChunk
+      + isBroadcast
+      + override def toString: String = name
    }
 
    class MemoryMode {
@@ -78,6 +93,241 @@ classDiagram
       -long _poolSize // 实际池大小
     }
 ```
+
+## BlockId
+
+BlockId类用于**标识**不同类型的数据块。在Spark中，数据块是数据的基本单位，数据块的标识对分布式数据处理非常重要。
+`BlockId`是一个抽象类，所有数据块标识类都继承自这个类以下是几种具体的`BlockId`实现类：
+
+### `RDDBlockId`
+
+```scala
+@DeveloperApi
+case class RDDBlockId(rddId: Int, splitIndex: Int) extends BlockId {
+  override def name: String = "rdd_" + rddId + "_" + splitIndex
+}
+```
+
+用于标识RDD数据块，包含RDD ID和分片索引。
+
+### `ShuffleBlockId`
+
+```scala
+@DeveloperApi
+case class ShuffleBlockId(shuffleId: Int, mapId: Long, reduceId: Int) extends BlockId {
+  override def name: String = "shuffle_" + shuffleId + "_" + mapId + "_" + reduceId
+}
+```
+
+用于标识Shuffle数据块，包含Shuffle ID、map任务ID和reduce任务ID。
+
+## SerializerManager
+
+SerializerManager 类是 Spark 框架中的一个组件，它负责配置各种 Spark 组件的序列化、压缩和加密。这个类能够自动选择适合的 Serializer 用于 shuffle 操作。
+
+### SerializerManager的成员和构造方法
+
+```scala
+private[spark] class SerializerManager(
+    defaultSerializer: Serializer,
+    conf: SparkConf,
+    encryptionKey: Option[Array[Byte]]) {
+```
+
+- `defaultSerializer`: 默认的序列化器。
+- `conf`: Spark 配置对象。
+- `encryptionKey`: 可选的加密密钥。
+
+这个类还有一个辅助构造方法：
+
+```scala
+def this(defaultSerializer: Serializer, conf: SparkConf) = this(defaultSerializer, conf, None)
+```
+
+### 私有变量和懒加载变量
+
+```scala
+private[this] val kryoSerializer = new KryoSerializer(conf)
+private[this] val stringClassTag: ClassTag[String] = implicitly[ClassTag[String]]
+private[this] val primitiveAndPrimitiveArrayClassTags: Set[ClassTag[_]] = {
+  val primitiveClassTags = Set[ClassTag[_]](
+    ClassTag.Boolean,
+    ClassTag.Byte,
+    ClassTag.Char,
+    ClassTag.Double,
+    ClassTag.Float,
+    ClassTag.Int,
+    ClassTag.Long,
+    ClassTag.Null,
+    ClassTag.Short
+  )
+  val arrayClassTags = primitiveClassTags.map(_.wrap)
+  primitiveClassTags ++ arrayClassTags
+}
+```
+
+- `kryoSerializer`: 使用 Kryo 序列化的实例。
+- `stringClassTag`: 字符串的类标签。
+- `primitiveAndPrimitiveArrayClassTags`: 基本类型和基本类型数组的类标签集合。
+
+### 配置相关变量
+
+```scala
+private[this] val compressBroadcast = conf.get(config.BROADCAST_COMPRESS)
+private[this] val compressShuffle = conf.get(config.SHUFFLE_COMPRESS)
+private[this] val compressRdds = conf.get(config.RDD_COMPRESS)
+private[this] val compressShuffleSpill = conf.get(config.SHUFFLE_SPILL_COMPRESS)
+
+private lazy val compressionCodec: CompressionCodec = CompressionCodec.createCodec(conf)
+```
+
+- 这些变量是从配置中读取的，决定了是否对广播变量、shuffle 输出、RDD 分区和 shuffle 暂存数据进行压缩。
+- `compressionCodec` 是用于压缩的编解码器，它是一个懒加载变量，只有在第一次使用时才会初始化。
+
+### 方法
+
+#### 设置默认类加载器
+
+```scala
+def setDefaultClassLoader(classLoader: ClassLoader): Unit = {
+  kryoSerializer.setDefaultClassLoader(classLoader)
+}
+```
+
+#### 判断是否可以使用 Kryo
+
+```scala
+def canUseKryo(ct: ClassTag[_]): Boolean = {
+  primitiveAndPrimitiveArrayClassTags.contains(ct) || ct == stringClassTag
+}
+```
+
+#### 获取序列化器
+
+```scala
+def getSerializer(ct: ClassTag[_], autoPick: Boolean): Serializer = {
+  if (autoPick && canUseKryo(ct)) {
+    kryoSerializer
+  } else {
+    defaultSerializer
+  }
+}
+
+def getSerializer(keyClassTag: ClassTag[_], valueClassTag: ClassTag[_]): Serializer = {
+  if (canUseKryo(keyClassTag) && canUseKryo(valueClassTag)) {
+    kryoSerializer
+  } else {
+    defaultSerializer
+  }
+}
+```
+
+- `getSerializer(ct: ClassTag[_], autoPick: Boolean)`: 根据类标签和是否自动选择来获取合适的序列化器。
+- `getSerializer(keyClassTag: ClassTag[_], valueClassTag: ClassTag[_])`: 为键值对 RDD 选择最好的序列化器。
+
+#### 是否需要压缩
+
+```scala
+private def shouldCompress(blockId: BlockId): Boolean = {
+  blockId match {
+    case _: ShuffleBlockId => compressShuffle
+    case _: ShuffleBlockChunkId => compressShuffle
+    case _: BroadcastBlockId => compressBroadcast
+    case _: RDDBlockId => compressRdds
+    case _: TempLocalBlockId => compressShuffleSpill
+    case _: TempShuffleBlockId => compressShuffle
+    case _: ShuffleBlockBatchId => compressShuffle
+    case _ => false
+  }
+}
+```
+
+- 根据 `BlockId` 的类型，决定是否需要压缩。
+
+#### 包装输入/输出流
+
+```scala
+def wrapStream(blockId: BlockId, s: InputStream): InputStream = {
+  wrapForCompression(blockId, wrapForEncryption(s))
+}
+
+def wrapStream(blockId: BlockId, s: OutputStream): OutputStream = {
+  wrapForCompression(blockId, wrapForEncryption(s))
+}
+
+def wrapForEncryption(s: InputStream): InputStream = {
+  encryptionKey
+    .map { key => CryptoStreamUtils.createCryptoInputStream(s, conf, key) }
+    .getOrElse(s)
+}
+
+def wrapForEncryption(s: OutputStream): OutputStream = {
+  encryptionKey
+    .map { key => CryptoStreamUtils.createCryptoOutputStream(s, conf, key) }
+    .getOrElse(s)
+}
+
+def wrapForCompression(blockId: BlockId, s: OutputStream): OutputStream = {
+  if (shouldCompress(blockId)) compressionCodec.compressedOutputStream(s) else s
+}
+
+def wrapForCompression(blockId: BlockId, s: InputStream): InputStream = {
+  if (shouldCompress(blockId)) compressionCodec.compressedInputStream(s) else s
+}
+```
+
+- 这些方法用于包装输入和输出流，以便添加加密和压缩功能。
+
+#### 序列化和反序列化
+
+```scala
+def dataSerializeStream[T: ClassTag](
+    blockId: BlockId,
+    outputStream: OutputStream,
+    values: Iterator[T]): Unit = {
+  val byteStream = new BufferedOutputStream(outputStream)
+  val autoPick = !blockId.isInstanceOf[StreamBlockId]
+  val ser = getSerializer(implicitly[ClassTag[T]], autoPick).newInstance()
+  ser.serializeStream(wrapForCompression(blockId, byteStream)).writeAll(values).close()
+}
+
+def dataSerialize[T: ClassTag](
+    blockId: BlockId,
+    values: Iterator[T]): ChunkedByteBuffer = {
+  dataSerializeWithExplicitClassTag(blockId, values, implicitly[ClassTag[T]])
+}
+
+def dataSerializeWithExplicitClassTag(
+    blockId: BlockId,
+    values: Iterator[_],
+    classTag: ClassTag[_]): ChunkedByteBuffer = {
+  val bbos = new ChunkedByteBufferOutputStream(1024 * 1024 * 4, ByteBuffer.allocate)
+  val byteStream = new BufferedOutputStream(bbos)
+  val autoPick = !blockId.isInstanceOf[StreamBlockId]
+  val ser = getSerializer(classTag, autoPick).newInstance()
+  ser.serializeStream(wrapForCompression(blockId, byteStream)).writeAll(values).close()
+  bbos.toChunkedByteBuffer
+}
+
+def dataDeserializeStream[T](
+    blockId: BlockId,
+    inputStream: InputStream)
+    (classTag: ClassTag[T]): Iterator[T] = {
+  val stream = new BufferedInputStream(inputStream)
+  val autoPick = !blockId.isInstanceOf[StreamBlockId]
+  getSerializer(classTag, autoPick)
+    .newInstance()
+    .deserializeStream(wrapForCompression(blockId, stream))
+    .asIterator.asInstanceOf[Iterator[T]]
+}
+```
+
+- `dataSerializeStream` 和 `dataSerialize` 用于将数据序列化到流或 `ChunkedByteBuffer` 中。
+- `dataDeserializeStream` 用于从输入流中反序列化数据。
+
+### 总结
+
+`SerializerManager` 类提供了对序列化、压缩和加密的全面管理。通过配置和上下文自动选择合适的序列化器，并通过包装输入输出流实现对数据的压缩和加密。这样设计的目的在于提高 Spark 处理数据的灵活性和安全性。
 
 ## 源码分析
 
