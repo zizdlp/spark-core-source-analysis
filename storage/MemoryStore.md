@@ -8,71 +8,76 @@
 
 ```mermaid
 classDiagram
-    class MemoryStore {
-        -SparkConf conf
-        -BlockInfoManager blockInfoManager
-        -SerializerManager serializerManager
-        -MemoryManager memoryManager
-        -BlockEvictionHandler blockEvictionHandler
-        -LinkedHashMap~BlockId, MemoryEntry~ entries
-        -mutable.HashMap~Long, Long~ onHeapUnrollMemoryMap
-        -mutable.HashMap~Long, Long~ offHeapUnrollMemoryMap
-        -Long unrollMemoryThreshold
-        +Long maxMemory()
-        +Long memoryUsed()
-        +Long blocksMemoryUsed()
-        +Long getSize(BlockId blockId)
-        +Boolean putBytes[T](BlockId blockId, Long size, MemoryMode memoryMode, Function0~ChunkedByteBuffer~ _bytes)
-        +Either~Long, Long~ putIterator[T](BlockId blockId, Iterator~T~ values, ClassTag~T~ classTag, MemoryMode memoryMode, ValuesHolder~T~ valuesHolder)
-        +Either~PartiallyUnrolledIterator~T~, Long~ putIteratorAsValues[T](BlockId blockId, Iterator~T~ values, MemoryMode memoryMode, ClassTag~T~ classTag)
-        +Either~PartiallySerializedBlock~T~, Long~ putIteratorAsBytes[T](BlockId blockId, Iterator~T~ values, ClassTag~T~ classTag, MemoryMode memoryMode)
-        +Option~ChunkedByteBuffer~ getBytes(BlockId blockId)
-        +Option~Iterator~_~ getValues(BlockId blockId)
-        +Unit freeMemoryEntry[T~<:~MemoryEntry~_~](T entry)
-        +Boolean remove(BlockId blockId)
-        +Unit clear()
-        +Option~Int~ getRddId(BlockId blockId)
-        +Long evictBlocksToFreeSpace(Option~BlockId~ blockId, Long space, MemoryMode memoryMode)
-        +Boolean contains(BlockId blockId)
-        +Long currentTaskAttemptId()
-        +Boolean reserveUnrollMemoryForThisTask(BlockId blockId, Long memory, MemoryMode memoryMode)
-        +Unit releaseUnrollMemoryForThisTask(MemoryMode memoryMode, Long memory)
+   class MemoryStore {
+
+   -BlockInfoManager blockInfoManager //管理块数据metadata
+   -SerializerManager serializerManager
+   -MemoryManager memoryManager //管理内存的分配
+   -BlockEvictionHandler blockEvictionHandler
+   -LinkedHashMap~BlockId, MemoryEntry~ entries//实际数据的存储
+
+   - putBytes[T](BlockId blockId, Long size, MemoryMode memoryMode, Function0[ChunkedByteBuffer] _bytes)// 将块作为字节存储到内存中。
+   - putIterator[T](BlockId blockId, Iterator[T] values, ClassTag[T] classTag, MemoryMode memoryMode, ValuesHolder[T] valuesHolder)// 将块作为值或字节存储到内存中。
+   }
+   MemoryStore --> MemoryManager : 使用
+   class MemoryManager {
+   -onHeapStorageMemoryPool: StorageMemoryPool//堆上存储内存池，仅管理，不是真正的存储
+   -offHeapStorageMemoryPool: StorageMemoryPool
+   -onHeapExecutionMemoryPool: ExecutionMemoryPool
+   -offHeapExecutionMemoryPool: ExecutionMemoryPool
+   }
+
+   MemoryManager --> StorageMemoryPool : 使用
+   MemoryManager --> ExecutionMemoryPool : 使用
+
+   ExecutionMemoryPool "1" --|> "1" MemoryPool : 继承
+   class ExecutionMemoryPool {
+      +getMemoryUsageForTask(taskAttemptId: Long)
+      +acquireMemory()
+      +releaseMemory()
+   }
+
+   class StorageMemoryPool {
+      +long memoryUsed // 当前使用的内存量
+      -Object lock // 用于同步的对象
+      -long _memoryUsed // 实际使用的内存量
+      -MemoryStore _memoryStore // 内存存储实例,用于驱逐其某些block释放内存
+      
+      +void setMemoryStore(MemoryStore store) // 设置 MemoryStore 实例
+      +boolean acquireMemory(BlockId blockId, long numBytes) // 尝试分配内存
+      +boolean acquireMemory(BlockId blockId, long numBytesToAcquire, long numBytesToFree) // 尝试分配内存（重载）
+      +void releaseMemory(long size) // 释放指定大小的内存
+      +void releaseAllMemory() // 释放所有使用的内存
+      +long freeSpaceToShrinkPool(long spaceToFree) // 释放空间以缩小内存池
+   }
+
+   class MemoryStore {
+      // 这里可以添加 MemoryStore 类的成员和方法
+   }
+
+   class BlockId {
+      // 这里可以添加 BlockId 类的成员和方法
+   }
+
+   class MemoryMode {
+      // 这里可以添加 MemoryMode 类的成员和方法
+   }
+
+   StorageMemoryPool "1" -- "1" MemoryStore : 使用
+   StorageMemoryPool "1" -- "1" BlockId : 管理
+   StorageMemoryPool "1" -- "1" MemoryMode : 类型
+
+   StorageMemoryPool "1" --|> "1" MemoryPool : 继承
+   class MemoryPool {
+      +long poolSize // 当前池大小
+      +long memoryFree // 可用内存量
+      +void incrementPoolSize(long delta) // 增加池的大小
+      +void decrementPoolSize(long delta) // 减少池的大小
+      +long memoryUsed // 已用内存量
+      -Object lock // 用于同步的对象
+      -long _poolSize // 实际池大小
     }
 ```
-
-### 类和成员注释
-
-1. **MemoryStore**
-   - **conf**: `SparkConf` 对象，用于存储 Spark 配置。
-   - **blockInfoManager**: `BlockInfoManager` 对象，用于管理块的信息。
-   - **serializerManager**: `SerializerManager` 对象，用于管理序列化和反序列化。
-   - **memoryManager**: `MemoryManager` 对象，用于管理内存分配。
-   - **blockEvictionHandler**: `BlockEvictionHandler` 对象，用于处理块的驱逐。
-   - **entries**: `LinkedHashMap[BlockId, MemoryEntry[_]]`，存储内存中的块条目。
-   - **onHeapUnrollMemoryMap**: `mutable.HashMap[Long, Long]`，存储展开块时使用的堆内存。
-   - **offHeapUnrollMemoryMap**: `mutable.HashMap[Long, Long]`，存储展开块时使用的堆外内存。
-   - **unrollMemoryThreshold**: `Long`，在展开任何块之前请求的初始内存。
-   - **maxMemory()**: 返回总的存储内存（字节）。
-   - **memoryUsed()**: 返回使用的总存储内存（字节）。
-   - **blocksMemoryUsed()**: 返回用于缓存块的存储内存（不包括展开内存）。
-   - **getSize(BlockId blockId)**: 获取指定块的大小。
-   - **putBytes[T](BlockId blockId, Long size, MemoryMode memoryMode, Function0[ChunkedByteBuffer] _bytes)**: 将块作为字节存储到内存中。
-   - **putIterator[T](BlockId blockId, Iterator[T] values, ClassTag[T] classTag, MemoryMode memoryMode, ValuesHolder[T] valuesHolder)**: 将块作为值或字节存储到内存中。
-   - **putIteratorAsValues[T](BlockId blockId, Iterator[T] values, MemoryMode memoryMode, ClassTag[T] classTag)**: 将块作为值存储到内存中。
-   - **putIteratorAsBytes[T](BlockId blockId, Iterator[T] values, ClassTag[T] classTag, MemoryMode memoryMode)**: 将块作为字节存储到内存中。
-   - **getBytes(BlockId blockId)**: 获取块的字节内容。
-   - **getValues(BlockId blockId)**: 获取块的值内容。
-   - **freeMemoryEntry[T <: MemoryEntry[_]](T entry)**: 释放指定的内存条目。
-   - **remove(BlockId blockId)**: 从内存中移除指定的块。
-   - **clear()**: 清除内存存储。
-   - **getRddId(BlockId blockId)**: 返回给定块 ID 所属的 RDD ID。
-   - **evictBlocksToFreeSpace(Option[BlockId] blockId, Long space, MemoryMode memoryMode)**: 尝试驱逐块以释放指定的空间。
-   - **contains(BlockId blockId)**: 检查内存中是否包含指定的块。
-   - **currentTaskAttemptId()**: 返回当前任务尝试的 ID。
-   - **reserveUnrollMemoryForThisTask(BlockId blockId, Long memory, MemoryMode memoryMode)**: 为任务展开块保留内存。
-   - **releaseUnrollMemoryForThisTask(MemoryMode memoryMode, Long memory)**: 释放任务展开块保留的内存。
-
-以上 Mermaid 图展示了 `MemoryStore` 类的结构及其主要成员，并为每个成员添加了注释，以帮助理解其作用和功能。
 
 ## 源码分析
 
