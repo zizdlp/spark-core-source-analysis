@@ -44,12 +44,6 @@
             "sublayouts": null
           },
           {
-            "title": "BlockInfoManager",
-            "relative_path": "storage/blockinfomanager",
-            "isdir": false,
-            "sublayouts": null
-          },
-          {
             "title": "MemoryStore",
             "relative_path": "storage/memorystore",
             "isdir": false,
