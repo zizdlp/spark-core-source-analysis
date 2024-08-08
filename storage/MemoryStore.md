@@ -10,7 +10,7 @@
 classDiagram
    class MemoryStore {
 
-   -BlockInfoManager blockInfoManager //管理块数据metadata
+   -BlockInfoManager blockInfoManager //管理块数据metadata,释放block时加锁操作
    -SerializerManager serializerManager
    -MemoryManager memoryManager //管理内存的分配
    -BlockEvictionHandler blockEvictionHandler//用于内存不足时释放空间（比如到磁盘）
@@ -149,6 +149,11 @@ classDiagram
       +long memoryUsed // 已用内存量
       -Object lock // 用于同步的对象
       -long _poolSize // 实际池大小
+    }
+    MemoryStore --> BlockInfoManager : 使用
+    class BlockInfoManager {
+      +blockInfoWrappers = new ConcurrentHashMap[BlockId, BlockInfoWrapper]
+      +acquireLock(blockId: BlockId,blocking: Boolean)
     }
 ```
 
@@ -570,6 +575,10 @@ classDiagram
 
 这些计算确保了 Spark 可以根据配置和实际内存资源进行适当的内存分配和管理。
 
+## BlockInfoManager
+
+`BlockInfoManager` 是 Spark 的一个重要组件，负责跟踪和管理 Spark 存储系统中块的元数据，并处理块的锁定机制。它使用读写锁来确保对块的并发访问不会导致竞争条件。
+
 ## MemoryStore 源码分析
 
 ### 类定义和构造函数
@@ -736,7 +745,7 @@ def clear(): Unit = memoryManager.synchronized {
 
 !!! tip 迭代器
       **迭代器**（Iterator）是一种设计模式，它提供一种方式来访问一个集合对象中的各个元素，而无需暴露该对象的内部表示。迭代器通常用于遍历列表、集合等数据结构。
-      
+
       在 Scala 中，`Iterator` 是一个标准的接口，它允许顺序访问集合中的元素，而不需要提前知道集合的大小。
 
       ```scala

@@ -50,12 +50,6 @@
             "sublayouts": null
           },
           {
-            "title": "MemoryManager",
-            "relative_path": "storage/memorymanager",
-            "isdir": false,
-            "sublayouts": null
-          },
-          {
             "title": "MemoryStore",
             "relative_path": "storage/memorystore",
             "isdir": false,
