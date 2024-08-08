@@ -13,6 +13,9 @@ classDiagram
         + memoryStore
         + diskStore
 
+        +storageEndpoint:BlockManagerStorageEndpoint
+        +putBlockData(blockId,data: ManagedBuffer,level: StorageLevel,classTag: ClassTag[_])
+
     }
     BlockManager --> BlockManagerMaster : 使用
     BlockManager --> SerializerManager : 使用
