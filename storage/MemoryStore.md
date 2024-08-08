@@ -154,6 +154,8 @@ classDiagram
     class BlockInfoManager {
       +blockInfoWrappers = new ConcurrentHashMap[BlockId, BlockInfoWrapper]
       +acquireLock(blockId: BlockId,blocking: Boolean)
+      +lockForReading(blockId,blocking)
+      +lockForWriting(blockId,blocking)
     }
 ```
 
@@ -577,7 +579,16 @@ classDiagram
 
 ## BlockInfoManager
 
-`BlockInfoManager` 是 Spark 的一个重要组件，负责跟踪和管理 Spark 存储系统中块的元数据，并处理块的锁定机制。它使用读写锁来确保对块的并发访问不会导致竞争条件。
+`BlockInfoManager` 是 Spark 的一个重要组件，负责跟踪和管理 Spark 存储系统中块的**元数据**，并处理**块的锁定机制**。它使用读写锁来确保对块的并发访问不会导致竞争条件。
+
+metadata:
+
+- level：块的存储级别（例如，内存、磁盘）。
+- classTag：用于选择序列化器的类标签。
+- tellMaster：指示是否将状态更改报告给主节点的布尔标志。
+- _size：块的大小，以字节为单位。
+- _readerCount：块上持有的读锁数量。
+- _writerTask：持有写锁的任务尝试ID，或表示无写锁或非任务写锁的特殊常量。
 
 ## MemoryStore 源码分析
 
