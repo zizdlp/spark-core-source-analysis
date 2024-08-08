@@ -362,6 +362,214 @@ override def getBuilder(): MemoryEntryBuilder[T] = new MemoryEntryBuilder[T] {
 
 `SerializerManager` 类提供了对序列化、压缩和加密的全面管理。通过配置和上下文自动选择合适的序列化器，并通过包装输入输出流实现对数据的压缩和加密。这样设计的目的在于提高 Spark 处理数据的灵活性和安全性。
 
+## MemoryManager
+
+`MemoryManager` 类是 Spark 内存管理的抽象基类，负责在执行内存和存储内存之间分配和管理内存。它使用 `StorageMemoryPool` 和 `ExecutionMemoryPool` 来管理不同类型的内存池，并根据配置来处理堆内存和非堆内存的使用。
+
+### `Mermaid` 图表
+
+以下是 `MemoryManager` 类的 `Mermaid` 图表，展示了主要字段和方法的关系及其注释。
+
+```mermaid
+classDiagram
+    class MemoryManager {
+        +conf: SparkConf
+        +numCores: Int
+        +onHeapStorageMemory: Long
+        +onHeapExecutionMemory: Long
+        +onHeapStorageMemoryPool: StorageMemoryPool
+        +offHeapStorageMemoryPool: StorageMemoryPool
+        +onHeapExecutionMemoryPool: ExecutionMemoryPool
+        +offHeapExecutionMemoryPool: ExecutionMemoryPool
+        +maxOffHeapMemory: Long
+        +offHeapStorageMemory: Long
+        +tungstenMemoryMode: MemoryMode
+        +defaultPageSizeBytes: Long
+        +pageSizeBytes: Long
+        +tungstenMemoryAllocator: MemoryAllocator
+
+        +acquireStorageMemory(blockId: BlockId, numBytes: Long, memoryMode: MemoryMode): Boolean
+        +acquireUnrollMemory(blockId: BlockId, numBytes: Long, memoryMode: MemoryMode): Boolean
+        +acquireExecutionMemory(numBytes: Long, taskAttemptId: Long, memoryMode: MemoryMode): Long
+        +releaseExecutionMemory(numBytes: Long, taskAttemptId: Long, memoryMode: MemoryMode): Unit
+        +releaseAllExecutionMemoryForTask(taskAttemptId: Long): Long
+        +releaseStorageMemory(numBytes: Long, memoryMode: MemoryMode): Unit
+        +releaseAllStorageMemory(): Unit
+        +releaseUnrollMemory(numBytes: Long, memoryMode: MemoryMode): Unit
+        +executionMemoryUsed: Long
+        +storageMemoryUsed: Long
+        +onHeapExecutionMemoryUsed: Long
+        +offHeapExecutionMemoryUsed: Long
+        +onHeapStorageMemoryUsed: Long
+        +offHeapStorageMemoryUsed: Long
+        +getExecutionMemoryUsageForTask(taskAttemptId: Long): Long
+        +tungstenMemoryAllocator: MemoryAllocator
+    }
+
+    class StorageMemoryPool {
+        <<interface>>
+    }
+
+    class ExecutionMemoryPool {
+        <<interface>>
+    }
+
+    class SparkConf {
+        <<interface>>
+    }
+
+    class BlockId {
+        <<interface>>
+    }
+
+    class MemoryMode {
+        <<interface>>
+    }
+
+    class MemoryAllocator {
+        <<interface>>
+    }
+
+    MemoryManager --> StorageMemoryPool : uses
+    MemoryManager --> ExecutionMemoryPool : uses
+    MemoryManager --> SparkConf : uses
+    MemoryManager --> BlockId : uses
+    MemoryManager --> MemoryMode : uses
+    MemoryManager --> MemoryAllocator : uses
+```
+
+### 注释说明
+
+- **字段**
+  - `onHeapStorageMemoryPool` 和 `offHeapStorageMemoryPool` 负责管理存储内存的堆和非堆内存。
+  - `onHeapExecutionMemoryPool` 和 `offHeapExecutionMemoryPool` 负责管理执行内存的堆和非堆内存。
+  - `maxOffHeapMemory` 和 `offHeapStorageMemory` 用于配置和管理非堆内存的使用。
+  - `tungstenMemoryMode` 决定了内存是使用堆内存还是非堆内存。
+  - `defaultPageSizeBytes` 和 `pageSizeBytes` 确定页面的默认大小。
+
+- **方法**
+  - `acquireStorageMemory` 和 `acquireUnrollMemory` 用于请求存储和解压内存。
+  - `acquireExecutionMemory` 用于请求执行内存。
+  - `releaseExecutionMemory` 和 `releaseStorageMemory` 用于释放内存。
+  - `executionMemoryUsed` 和 `storageMemoryUsed` 提供当前使用的内存量。
+
+### 主要字段和方法
+
+1. **字段**
+
+   - `onHeapStorageMemoryPool` 和 `offHeapStorageMemoryPool`
+     - `StorageMemoryPool` 的实例，用于管理堆内存和非堆内存中的存储内存。
+
+   - `onHeapExecutionMemoryPool` 和 `offHeapExecutionMemoryPool`
+     - `ExecutionMemoryPool` 的实例，用于管理堆内存和非堆内存中的执行内存。
+
+   - `maxOffHeapMemory`
+     - 最大的非堆内存大小。
+
+   - `offHeapStorageMemory`
+     - 分配给存储的非堆内存大小。
+
+   - `tungstenMemoryMode`
+     - 指示 Tungsten 内存分配是使用堆内存还是非堆内存。
+
+   - `defaultPageSizeBytes`
+     - 默认的页面大小。
+
+   - `pageSizeBytes`
+     - 配置的页面大小。
+
+   - `tungstenMemoryAllocator`
+     - 用于 Tungsten 内存的分配器。
+
+2. **方法**
+
+   - `acquireStorageMemory`
+     - 请求存储内存，必要时会回收已有内存。
+
+   - `acquireUnrollMemory`
+     - 请求解压内存，允许子类区分存储内存和解压内存的行为。
+
+   - `acquireExecutionMemory`
+     - 请求执行内存，用于当前任务。
+
+   - `releaseExecutionMemory`
+     - 释放执行内存。
+
+   - `releaseAllExecutionMemoryForTask`
+     - 释放所有执行内存。
+
+   - `releaseStorageMemory`
+     - 释放存储内存。
+
+   - `releaseAllStorageMemory`
+     - 释放所有存储内存。
+
+   - `releaseUnrollMemory`
+     - 释放解压内存。
+
+   - `executionMemoryUsed` 和 `storageMemoryUsed`
+     - 获取当前使用的执行内存和存储内存。
+
+   - `getExecutionMemoryUsageForTask`
+     - 获取给定任务的执行内存使用情况。
+
+   - `tungstenMemoryAllocator`
+     - 根据内存模式选择合适的内存分配器。
+
+在 `MemoryManager` 类中，各内存池的大小确定过程如下：
+
+### 内存池大小的确定
+
+1. **堆内存池（On-Heap Memory Pools）**
+
+   - `onHeapStorageMemoryPool`
+     - **大小确定**: `onHeapStorageMemory`。
+     - **说明**: 在构造函数中，`onHeapStorageMemoryPool` 的大小由 `onHeapStorageMemory` 确定。`onHeapStorageMemory` 是通过配置文件（`SparkConf`）中指定的配置项来确定的，例如 `spark.memory.storageFraction`，它决定了堆内存中分配给存储的比例。
+
+   - `onHeapExecutionMemoryPool`
+     - **大小确定**: `onHeapExecutionMemory`。
+     - **说明**: `onHeapExecutionMemoryPool` 的大小由 `onHeapExecutionMemory` 确定。`onHeapExecutionMemory` 是通过配置文件（`SparkConf`）中的配置项 `spark.memory.fraction` 来决定的，这个配置项定义了总堆内存中分配给执行内存的比例。
+
+2. **非堆内存池（Off-Heap Memory Pools）**
+
+   - `offHeapStorageMemoryPool`
+     - **大小确定**: `offHeapStorageMemory`。
+     - **说明**: 在构造函数中，`offHeapStorageMemoryPool` 的大小由 `offHeapStorageMemory` 确定。`offHeapStorageMemory` 是通过配置项 `spark.memory.offHeap.size` 和 `spark.memory.storageFraction` 计算得出的。具体来说，`offHeapStorageMemory` 是从 `maxOffHeapMemory` 中按照 `spark.memory.storageFraction` 配置项计算出来的。这个值决定了非堆内存中用于存储的内存量。
+
+   - `offHeapExecutionMemoryPool`
+     - **大小确定**: `maxOffHeapMemory - offHeapStorageMemory`。
+     - **说明**: `offHeapExecutionMemoryPool` 的大小是剩余的非堆内存量，即 `maxOffHeapMemory` 减去 `offHeapStorageMemory`。这个值决定了非堆内存中用于执行的内存量。
+
+### 计算过程
+
+1. **堆内存池的大小计算**
+   - `onHeapStorageMemory` 和 `onHeapExecutionMemory` 分别由 `spark.memory.storageFraction` 和 `spark.memory.fraction` 配置项来确定。这两个值是对堆内存进行分配时的依据。
+
+2. **非堆内存池的大小计算**
+   - `maxOffHeapMemory` 由 `spark.memory.offHeap.size` 配置项确定，表示总的非堆内存大小。
+   - `offHeapStorageMemory` 是从 `maxOffHeapMemory` 中分配给存储的内存，计算公式为 `maxOffHeapMemory * spark.memory.storageFraction`。
+   - `offHeapExecutionMemory` 是非堆内存中剩余的部分，即 `maxOffHeapMemory - offHeapStorageMemory`。
+
+### 示例
+
+假设有如下配置：
+
+- `spark.memory.storageFraction = 0.5`
+- `spark.memory.fraction = 0.6`
+- `spark.memory.offHeap.size = 2GB` (即 2 *1024* 1024 * 1024 字节)
+
+那么计算结果如下：
+
+- **堆内存**: 假设堆内存总量为 4GB (即 4 *1024* 1024 * 1024 字节)
+  - `onHeapStorageMemory = 0.5 * 4GB = 2GB`
+  - `onHeapExecutionMemory = 0.6 * 4GB - onHeapStorageMemory = 2.4GB - 2GB = 0.4GB`
+
+- **非堆内存**:
+  - `offHeapStorageMemory = 2GB * 0.5 = 1GB`
+  - `offHeapExecutionMemory = 2GB - 1GB = 1GB`
+
+这些计算确保了 Spark 可以根据配置和实际内存资源进行适当的内存分配和管理。
+
 ## MemoryStore 源码分析
 
 ### 类定义和构造函数
@@ -524,6 +732,103 @@ def clear(): Unit = memoryManager.synchronized {
 
 - `clear` 方法用于清空 `MemoryStore` 中的所有块并释放所有内存。
 
+### 解卷操作(unroll)
+
+!!! tip 迭代器
+      **迭代器**（Iterator）是一种设计模式，它提供一种方式来访问一个集合对象中的各个元素，而无需暴露该对象的内部表示。迭代器通常用于遍历列表、集合等数据结构。
+      
+      在 Scala 中，`Iterator` 是一个标准的接口，它允许顺序访问集合中的元素，而不需要提前知道集合的大小。
+
+      ```scala
+      val numbers = List(1, 2, 3, 4, 5)
+      val iterator = numbers.iterator
+
+      while (iterator.hasNext) {
+         println(iterator.next())
+      }
+      ```
+      在这个例子中，`iterator` 是一个用于遍历 `numbers` 列表的迭代器。
+
+#### 临时展开内存
+
+**临时展开内存**（Unroll Memory）是在计算过程中临时分配的内存，用于存储中间结果。在 Spark 中，临时展开内存用于在将数据块放入内存存储之前展开迭代器的数据。
+
+临时展开内存的使用示例如下：
+
+#### 迭代器示例
+
+假设我们有一个需要存储到内存中的迭代器，我们需要逐步展开这个迭代器，并在展开过程中确保有足够的内存来存储中间结果。这个过程使用临时展开内存来避免一次性分配过多内存导致 OOM（内存不足）异常。
+
+```scala
+import scala.reflect.ClassTag
+import org.apache.spark.storage.{BlockId, MemoryMode}
+import org.apache.spark.memory.{MemoryManager, TaskMemoryManager}
+import org.apache.spark.internal.Logging
+
+class MemoryStore extends Logging {
+// 假设一个简单的内存管理器
+val memoryManager = new MemoryManager(null, null, 0.6, 0.4, 1)
+
+def putIterator[T: ClassTag](
+   blockId: BlockId,
+   values: Iterator[T],
+   memoryMode: MemoryMode): Either[Long, Long] = {
+
+   var elementsUnrolled = 0
+   var keepUnrolling = true
+   var unrollMemoryUsed = 0L
+   val initialMemoryThreshold = 1024L
+   var memoryThreshold = initialMemoryThreshold
+
+   keepUnrolling = memoryManager.acquireUnrollMemory(blockId, initialMemoryThreshold, memoryMode)
+
+   if (!keepUnrolling) {
+      logWarning(s"Failed to reserve initial memory threshold of $initialMemoryThreshold bytes.")
+   } else {
+      unrollMemoryUsed += initialMemoryThreshold
+   }
+
+   while (values.hasNext && keepUnrolling) {
+      val value = values.next()
+      elementsUnrolled += 1
+      // 估算当前存储的大小
+      val currentSize = elementsUnrolled * 8L // 假设每个元素占用 8 字节
+      if (currentSize >= memoryThreshold) {
+      val amountToRequest = currentSize * 2 - memoryThreshold
+      keepUnrolling = memoryManager.acquireUnrollMemory(blockId, amountToRequest, memoryMode)
+      if (keepUnrolling) {
+         unrollMemoryUsed += amountToRequest
+      }
+      memoryThreshold += amountToRequest
+      }
+   }
+
+   if (keepUnrolling) {
+      Right(unrollMemoryUsed)
+   } else {
+      Left(unrollMemoryUsed)
+   }
+}
+}
+
+// 示例使用
+object MemoryStoreExample extends App {
+val memoryStore = new MemoryStore
+val blockId = new BlockId {
+   override def name: String = "exampleBlock"
+}
+val values = Iterator(1, 2, 3, 4, 5)
+
+val result = memoryStore.putIterator(blockId, values, MemoryMode.ON_HEAP)
+result match {
+   case Right(size) => println(s"Block stored successfully with size $size bytes.")
+   case Left(memoryUsed) => println(s"Failed to store block. Unrolled memory used: $memoryUsed bytes.")
+}
+}
+```
+
+在这个示例中，`putIterator` 方法逐步展开 `values` 迭代器，并定期检查是否需要请求更多内存。`MemoryManager` 用于管理临时展开内存的分配和释放。
+
 ### 其他方法
 
 - `evictBlocksToFreeSpace`: 尝试逐出块以腾出指定空间用于存储新块。
@@ -554,104 +859,8 @@ def clear(): Unit = memoryManager.synchronized {
 4. **日志记录**：
    - 类中大量使用日志记录（`logInfo`, `logWarning` 等）来跟踪内存使用情况和操作结果。
 
-## 代码中的一些关键点
+### 代码中的一些关键点
 
 - **线程安全**：在处理内存和块操作时，使用 `synchronized` 确保线程安全。
 - **内存策略**：支持堆内存和堆外内存两种存储模式，并且根据内存情况动态调整内存使用策略。
 - **解卷策略**：为了防止 OOM 异常，`putIterator` 方法会逐步解卷数据，同时动态请求内存。
-
-!!! tip unrolling
-
-      ### 迭代器
-      **迭代器**（Iterator）是一种设计模式，它提供一种方式来访问一个集合对象中的各个元素，而无需暴露该对象的内部表示。迭代器通常用于遍历列表、集合等数据结构。
-
-      在 Scala 中，`Iterator` 是一个标准的接口，它允许顺序访问集合中的元素，而不需要提前知道集合的大小。
-
-      #### 示例
-      ```scala
-      val numbers = List(1, 2, 3, 4, 5)
-      val iterator = numbers.iterator
-
-      while (iterator.hasNext) {
-         println(iterator.next())
-      }
-      ```
-      在这个例子中，`iterator` 是一个用于遍历 `numbers` 列表的迭代器。
-
-      ### 临时展开内存
-      **临时展开内存**（Unroll Memory）是在计算过程中临时分配的内存，用于存储中间结果。在 Spark 中，临时展开内存用于在将数据块放入内存存储之前展开迭代器的数据。
-
-      临时展开内存的使用示例如下：
-
-      #### 示例
-      假设我们有一个需要存储到内存中的迭代器，我们需要逐步展开这个迭代器，并在展开过程中确保有足够的内存来存储中间结果。这个过程使用临时展开内存来避免一次性分配过多内存导致 OOM（内存不足）异常。
-
-      ```scala
-      import scala.reflect.ClassTag
-      import org.apache.spark.storage.{BlockId, MemoryMode}
-      import org.apache.spark.memory.{MemoryManager, TaskMemoryManager}
-      import org.apache.spark.internal.Logging
-
-      class MemoryStore extends Logging {
-      // 假设一个简单的内存管理器
-      val memoryManager = new MemoryManager(null, null, 0.6, 0.4, 1)
-
-      def putIterator[T: ClassTag](
-         blockId: BlockId,
-         values: Iterator[T],
-         memoryMode: MemoryMode): Either[Long, Long] = {
-
-         var elementsUnrolled = 0
-         var keepUnrolling = true
-         var unrollMemoryUsed = 0L
-         val initialMemoryThreshold = 1024L
-         var memoryThreshold = initialMemoryThreshold
-
-         keepUnrolling = memoryManager.acquireUnrollMemory(blockId, initialMemoryThreshold, memoryMode)
-
-         if (!keepUnrolling) {
-            logWarning(s"Failed to reserve initial memory threshold of $initialMemoryThreshold bytes.")
-         } else {
-            unrollMemoryUsed += initialMemoryThreshold
-         }
-
-         while (values.hasNext && keepUnrolling) {
-            val value = values.next()
-            elementsUnrolled += 1
-            // 估算当前存储的大小
-            val currentSize = elementsUnrolled * 8L // 假设每个元素占用 8 字节
-            if (currentSize >= memoryThreshold) {
-            val amountToRequest = currentSize * 2 - memoryThreshold
-            keepUnrolling = memoryManager.acquireUnrollMemory(blockId, amountToRequest, memoryMode)
-            if (keepUnrolling) {
-               unrollMemoryUsed += amountToRequest
-            }
-            memoryThreshold += amountToRequest
-            }
-         }
-
-         if (keepUnrolling) {
-            Right(unrollMemoryUsed)
-         } else {
-            Left(unrollMemoryUsed)
-         }
-      }
-      }
-
-      // 示例使用
-      object MemoryStoreExample extends App {
-      val memoryStore = new MemoryStore
-      val blockId = new BlockId {
-         override def name: String = "exampleBlock"
-      }
-      val values = Iterator(1, 2, 3, 4, 5)
-
-      val result = memoryStore.putIterator(blockId, values, MemoryMode.ON_HEAP)
-      result match {
-         case Right(size) => println(s"Block stored successfully with size $size bytes.")
-         case Left(memoryUsed) => println(s"Failed to store block. Unrolled memory used: $memoryUsed bytes.")
-      }
-      }
-      ```
-
-      在这个示例中，`putIterator` 方法逐步展开 `values` 迭代器，并定期检查是否需要请求更多内存。`MemoryManager` 用于管理临时展开内存的分配和释放。
