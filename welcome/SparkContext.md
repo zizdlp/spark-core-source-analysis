@@ -4,6 +4,40 @@
 
 ## 类图
 
+SparkContext接收SparkConf类型的参数，然后创建env:SparkEnv,这是 Spark 中的一个关键类，负责管理和维护 Spark 应用程序的执行环境。它包含了许多重要的组件
+
+```mermaid
+classDiagram
+    class SparkContext {
+      +_conf: SparkConf
+      +_env: SparkEnv
+      + createSparkEnv(conf: SparkConf,isLocal: Boolean,listenerBus: LiveListenerBus)
+    }
+    SparkConf-->SparkContext :作为参数传入
+    class SparkConf {
+      + settings:ConcurrentHashMap[String, String]
+      + setMaster(master: String)//spark.master
+      + setAppName(name: String)//spark.app.name
+      + set(key: String, value: String)
+    }
+    SparkContext -->SparkEnv:使用
+    SparkConf--> SparkEnv:接收参数传入
+    class SparkEnv {
+      + isStopped
+      + RpcEnv：用于节点之间的通信。
+      + Serializer：用于对象序列化和反序列化。
+      + BlockManager：用于管理数据块的存储和调度。
+      + MapOutputTracker：用于跟踪 Shuffle 操作的输出位置。
+      + BroadcastManager：用于管理广播变量。
+      + stop()//停止各种manager
+      + createPythonWorker(pythonExec,workerModule: String,envVars: Map[String, String],useDaemo)
+      + destroyPythonWorker(...)
+      + releasePythonWorker(...)
+      + initializeShuffleManager()
+      + initializeMemoryManager()
+    }
+```
+
 下面是一些关于 `SparkContext` 的关键点：
 
 ### 1. 创建 SparkContext
