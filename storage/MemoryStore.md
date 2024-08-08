@@ -573,23 +573,10 @@ def clear(): Unit = memoryManager.synchronized {
       val iterator = numbers.iterator
 
       while (iterator.hasNext) {
-      println(iterator.next())
+         println(iterator.next())
       }
       ```
       在这个例子中，`iterator` 是一个用于遍历 `numbers` 列表的迭代器。
-
-      ### 物化
-      **物化**（Materialization）是指将数据从一种表示形式转换为另一种表示形式，通常是从延迟计算的表示形式转换为实际存储在内存或磁盘中的表示形式。在大数据处理系统中，物化常用于将惰性计算结果具体化，以便后续操作可以直接访问。
-
-      #### 示例
-      ```scala
-      val rdd = sc.parallelize(Seq(1, 2, 3, 4, 5)) // 创建一个 RDD
-      val filteredRDD = rdd.filter(_ % 2 == 0) // 延迟计算：过滤偶数
-
-      val result = filteredRDD.collect() // 物化：将结果从 RDD 转换为数组
-      println(result.mkString(", ")) // 输出：2, 4
-      ```
-      在这个例子中，`filteredRDD` 是一个延迟计算的 RDD，只有在调用 `collect` 方法时才会物化，将数据加载到内存中。
 
       ### 临时展开内存
       **临时展开内存**（Unroll Memory）是在计算过程中临时分配的内存，用于存储中间结果。在 Spark 中，临时展开内存用于在将数据块放入内存存储之前展开迭代器的数据。
