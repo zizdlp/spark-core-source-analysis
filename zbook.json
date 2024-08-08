@@ -17,6 +17,12 @@
             "relative_path": "welcome/introduction",
             "isdir": false,
             "sublayouts": null
+          },
+          {
+            "title": "SparkContext",
+            "relative_path": "welcome/sparkcontext",
+            "isdir": false,
+            "sublayouts": null
           }
         ]
       },
