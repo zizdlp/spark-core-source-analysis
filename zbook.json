@@ -39,6 +39,12 @@
             "sublayouts": null
           },
           {
+            "title": "BlockManager",
+            "relative_path": "storage/BlockManager",
+            "isdir": false,
+            "sublayouts": null
+          },
+          {
             "title": "BlockManagerMaster",
             "relative_path": "storage/BlockManagerMaster",
             "isdir": false,
