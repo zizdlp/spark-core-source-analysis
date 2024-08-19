@@ -1,12 +1,13 @@
 {
-    "anchors": [
-      {
-        "name": "GitHub",
-        "icon": "github",
-        "url": "https://github.com/zizdlp/spark-core-source-analysis"
-      }
-    ],
-    "layout": [
+  "anchors": [
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/zizdlp/spark-core-source-analysis"
+    }
+  ],
+  "layout": {
+    "default": [
       {
         "title": "welcome",
         "relative_path": "",
@@ -57,12 +58,13 @@
           }
         ]
       }
-    ],
-    "footerSocials": [
-      {
-        "name": "GitHub",
-        "icon": "github",
-        "url": "https://github.com/zizdlp/spark-core-source-analysis"
-      }
     ]
-  }
+  },
+  "footerSocials": [
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/zizdlp/spark-core-source-analysis"
+    }
+  ]
+}
