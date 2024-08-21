@@ -1,6 +1,62 @@
 # Dependency
 
-这些类和方法在 Spark 的 RDD 依赖管理中扮演着重要角色。它们主要用于描述和管理 RDD 之间的依赖关系，从而支持数据处理的执行计划。
+Dependency在 Spark 的 RDD 依赖管理中扮演着重要角色。它们主要用于描述和管理 RDD 之间的依赖关系，从而支持数据处理的执行计划。
+
+```mermaid
+classDiagram
+    class Dependency {
+        <<abstract>>
+        +def rdd: RDD[T] // 表示依赖的父 RDD
+    }
+
+    class NarrowDependency {
+        <<abstract>>
+        +def getParents(partitionId: Int): Seq[Int] // 获取子 RDD 分区依赖的父 RDD 分区
+    }
+
+    class ShuffleDependency {
+        <<DeveloperApi>>
+        -val keyClassName: String // 键的类名
+        -val valueClassName: String // 值的类名
+        -val combinerClassName: Option[String] // 组合器的类名（可能为空）
+        -val shuffleId: Int // Shuffle 操作的唯一标识符
+        -val shuffleHandle: ShuffleHandle // Shuffle 处理句柄
+        -val _shuffleMergeAllowed: Boolean // 是否允许 Shuffle 合并
+        -var mergerLocs: Seq[BlockManagerId] // 外部 Shuffle 服务的位置
+        -var _shuffleMergeFinalized: Boolean // Shuffle 合并是否已完成
+        -var _shuffleMergeId: Int // Shuffle 合并进程的唯一标识符
+        -@transient private[this] val shufflePushCompleted: RoaringBitmap // 记录哪些 map 任务已完成推送的位图
+        -@transient private[this] var finalizeTask: Option[ScheduledFuture[_]] // 用于协调 Shuffle 合并完成的最终化任务
+        +def shuffleMergeEnabled: Boolean // 是否启用 Shuffle 合并
+        +def shuffleMergeAllowed: Boolean // 是否允许 Shuffle 合并
+        +def setMergerLocs(mergerLocs: Seq[BlockManagerId]): Unit // 设置 Shuffle 合并处理器的位置
+        +def getMergerLocs: Seq[BlockManagerId] // 获取 Shuffle 合并处理器的位置
+        +def markShuffleMergeFinalized(): Unit // 标记 Shuffle 合并为已完成
+        +def isShuffleMergeFinalizedMarked: Boolean // 检查 Shuffle 合并是否已标记为完成
+        +def shuffleMergeFinalized: Boolean // 检查 Shuffle 合并是否已最终确定
+        +def newShuffleMergeState(): Unit // 重置 Shuffle 合并状态
+        +private def canShuffleMergeBeEnabled(): Boolean // 检查是否可以启用 Shuffle 合并
+        +private def incPushCompleted(mapIndex: Int): Int // 标记某个 map 任务的推送完成情况，并返回完成的 map 任务数量
+        +private def getFinalizeTask: Option[ScheduledFuture[_]] // 获取最终化任务
+        +private def setFinalizeTask(task: ScheduledFuture[_]): Unit // 设置最终化任务
+    }
+
+    class OneToOneDependency {
+        +def getParents(partitionId: Int): List[Int] // 获取子 RDD 分区的父 RDD 分区
+    }
+
+    class RangeDependency {
+        +def getParents(partitionId: Int): List[Int] // 获取子 RDD 分区的父 RDD 分区
+        -val inStart: Int // 父 RDD 的范围起始位置
+        -val outStart: Int // 子 RDD 的范围起始位置
+        -val length: Int // 范围长度
+    }
+
+    Dependency <|-- NarrowDependency
+    Dependency <|-- ShuffleDependency
+    NarrowDependency <|-- OneToOneDependency
+    NarrowDependency <|-- RangeDependency
+```
 
 ### 主要功能
 
@@ -66,61 +122,3 @@
    ```
 
    在这个例子中，`rdd2` 的每个分区可能依赖于 `rdd1` 的一个分区范围，具体取决于 `groupByKey` 的操作方式。
-
-```mermaid
-classDiagram
-    class Dependency {
-        <<abstract>>
-        +def rdd: RDD[T] // 表示依赖的父 RDD
-    }
-
-    class NarrowDependency {
-        <<abstract>>
-        +def getParents(partitionId: Int): Seq[Int] // 获取子 RDD 分区依赖的父 RDD 分区
-    }
-
-    class ShuffleDependency {
-        <<DeveloperApi>>
-        -val keyClassName: String // 键的类名
-        -val valueClassName: String // 值的类名
-        -val combinerClassName: Option[String] // 组合器的类名（可能为空）
-        -val shuffleId: Int // Shuffle 操作的唯一标识符
-        -val shuffleHandle: ShuffleHandle // Shuffle 处理句柄
-        -val _shuffleMergeAllowed: Boolean // 是否允许 Shuffle 合并
-        -var mergerLocs: Seq[BlockManagerId] // 外部 Shuffle 服务的位置
-        -var _shuffleMergeFinalized: Boolean // Shuffle 合并是否已完成
-        -var _shuffleMergeId: Int // Shuffle 合并进程的唯一标识符
-        -@transient private[this] val shufflePushCompleted: RoaringBitmap // 记录哪些 map 任务已完成推送的位图
-        -@transient private[this] var finalizeTask: Option[ScheduledFuture[_]] // 用于协调 Shuffle 合并完成的最终化任务
-        +def shuffleMergeEnabled: Boolean // 是否启用 Shuffle 合并
-        +def shuffleMergeAllowed: Boolean // 是否允许 Shuffle 合并
-        +def setMergerLocs(mergerLocs: Seq[BlockManagerId]): Unit // 设置 Shuffle 合并处理器的位置
-        +def getMergerLocs: Seq[BlockManagerId] // 获取 Shuffle 合并处理器的位置
-        +def markShuffleMergeFinalized(): Unit // 标记 Shuffle 合并为已完成
-        +def isShuffleMergeFinalizedMarked: Boolean // 检查 Shuffle 合并是否已标记为完成
-        +def shuffleMergeFinalized: Boolean // 检查 Shuffle 合并是否已最终确定
-        +def newShuffleMergeState(): Unit // 重置 Shuffle 合并状态
-        +private def canShuffleMergeBeEnabled(): Boolean // 检查是否可以启用 Shuffle 合并
-        +private def incPushCompleted(mapIndex: Int): Int // 标记某个 map 任务的推送完成情况，并返回完成的 map 任务数量
-        +private def getFinalizeTask: Option[ScheduledFuture[_]] // 获取最终化任务
-        +private def setFinalizeTask(task: ScheduledFuture[_]): Unit // 设置最终化任务
-    }
-
-    class OneToOneDependency {
-        +def getParents(partitionId: Int): List[Int] // 获取子 RDD 分区的父 RDD 分区
-    }
-
-    class RangeDependency {
-        +def getParents(partitionId: Int): List[Int] // 获取子 RDD 分区的父 RDD 分区
-        -val inStart: Int // 父 RDD 的范围起始位置
-        -val outStart: Int // 子 RDD 的范围起始位置
-        -val length: Int // 范围长度
-    }
-
-    Dependency <|-- NarrowDependency
-    Dependency <|-- ShuffleDependency
-    NarrowDependency <|-- OneToOneDependency
-    NarrowDependency <|-- RangeDependency
-```
-
-每个类成员都添加了简短的注释，以帮助理解它们的功能和用途。
