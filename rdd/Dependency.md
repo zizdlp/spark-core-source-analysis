@@ -42,7 +42,7 @@ classDiagram
     }
 
     class OneToOneDependency {
-        +def getParents(partitionId: Int): List[Int] // 获取子 RDD 分区的父 RDD 分区
+        +def getParents(partitionId: Int) List[Int] // 获取子 RDD 分区的父 RDD 分区
     }
 
     class RangeDependency {
@@ -122,3 +122,54 @@ classDiagram
    ```
 
    在这个例子中，`rdd2` 的每个分区可能依赖于 `rdd1` 的一个分区范围，具体取决于 `groupByKey` 的操作方式。
+
+### RangeDependency
+
+`RangeDependency` 类表示父 RDD 和子 RDD 之间的范围依赖关系。在这种依赖关系中，父 RDD 的一部分分区（即一个连续的范围）与子RDD的一个连续范围一一对应。
+**主要参数:**
+
+- **`rdd`**: 父 RDD（即依赖的源 RDD）。
+- **`inStart`**: 父 RDD 中的开始分区索引（即范围的起始分区）。
+- **`outStart`**: 子 RDD 中的开始分区索引（即范围的起始分区）。
+- **`length`**: 范围的长度（即父 RDD 和子 RDD 的分区范围长度）。
+
+**主要方法:**
+
+- **`getParents(partitionId: Int): List[Int]`**: 根据子 RDD 的分区索引，返回对应的父 RDD 分区索引。如果子 RDD 的分区索引在 `outStart` 和 `outStart + length` 范围内，则计算其对应的父 RDD 分区索引；否则返回空列表。
+
+### 示例
+
+假设你有一个父 RDD `rdd1` 和一个子 RDD `rdd2`，并且你希望 `rdd2` 的分区依赖于 `rdd1` 的某个连续范围的分区。
+
+**示例代码:**
+
+```scala
+import org.apache.spark.rdd.RDD
+import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.rdd.RDD
+
+// 初始化 SparkContext
+val conf = new SparkConf().setAppName("RangeDependencyExample").setMaster("local")
+val sc = new SparkContext(conf)
+
+// 创建父 RDD
+val rdd1 = sc.parallelize(1 to 10, 5) // 5 个分区的 RDD，包含 1 到 10 的整数
+
+// 创建子 RDD，假设它从父 RDD 的第 2 个分区到第 4 个分区
+val rdd2 = new RDD[Int](sc, Nil) {
+  override def compute(split: Partition, context: TaskContext): Iterator[Int] = {
+    Iterator.empty
+  }
+
+  override protected def getPartitions: Array[Partition] = {
+    Array.empty
+  }
+}
+
+// 创建 RangeDependency
+val rangeDependency = new RangeDependency[Int](rdd1, inStart = 2, outStart = 0, length = 3)
+
+// 验证子 RDD 的每个分区依赖于父 RDD 的分区
+val partitionId = 1 // 子 RDD 的分区索引
+println(rangeDependency.getParents(partitionId)) // 输出: List(3)
+```
