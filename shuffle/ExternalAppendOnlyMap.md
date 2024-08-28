@@ -57,3 +57,72 @@ while (iterator.hasNext) {
 ```
 
 在这个例子中，`ExternalAppendOnlyMap` 自动管理内存的使用，并在内存不足时将数据溢出到磁盘，确保应用程序能够处理大量数据而不会导致内存溢出。
+
+当然可以！下面是 `ExternalAppendOnlyMap` 类的 Mermaid 类图示例，其中主要成员后面添加了注释“//”：
+
+```mermaid
+classDiagram
+    class ExternalAppendOnlyMap {
+        <<DeveloperApi>>
+        -currentMap : SizeTrackingAppendOnlyMap // 当前内存映射
+        -spilledMaps : ArrayBuffer<DiskMapIterator> // 溢出映射
+        -sparkConf : SparkConf // Spark 配置
+        -diskBlockManager : DiskBlockManager // 磁盘块管理器
+        -serializerBatchSize : Int // 序列化器批次大小
+        -_diskBytesSpilled : Long // 溢出的磁盘字节数
+        -fileBufferSize : Int // 文件缓冲区大小
+        -writeMetrics : ShuffleWriteMetrics // 写入指标
+        -_peakMemoryUsedBytes : Long // 峰值内存使用字节数
+        -keyComparator : HashComparator // 键比较器
+        -ser : Serializer // 序列化器
+        -readingIterator : SpillableIterator // 读取迭代器
+        -numSpills() : Int // 已溢出的文件数量
+        -insert(key, value) : Unit // 插入键值对
+        -insertAll(entries) : Unit // 插入条目
+        -spill(collection) : Unit // 排序并溢出内容到磁盘
+        -forceSpill() : Boolean // 强制溢出以释放内存
+        -spillMemoryIteratorToDisk(inMemoryIterator) : DiskMapIterator // 将内存迭代器溢出到磁盘
+        -destructiveIterator(inMemoryIterator) : Iterator // 破坏性迭代器
+        -iterator() : Iterator // 合并内存和溢出映射的迭代器
+    }
+
+    class SizeTrackingAppendOnlyMap {
+      
+    }
+    ExternalAppendOnlyMap "1" *-- "0..1" SizeTrackingAppendOnlyMap : "has"
+   
+   class ExternalIterator {
+
+   }
+   class SpillableIterator {
+    //迭代器，内存不足时将数据从内存溢写到磁盘。
+   }
+   ExternalAppendOnlyMap --> Spillable: 继承
+  
+  class Spillable {
+  }
+   
+```
+
+这个类图包括了 `ExternalAppendOnlyMap` 及其相关的类，并且对主要成员进行了注释。你可以根据这个示例调整注释或添加更多细节。
+
+```mermaid
+graph TD
+    A1[insertAll entries] --> |调用| B1[maybeSpill]
+    B1 --> |判断是否需要溢写| B2{是否需要溢写}
+    B2 --> |是| B3[spill currentMap]
+    B2 --> |否| C1[currentMap.changeValue]
+    B3 --> B4[创建新的 SizeTrackingAppendOnlyMap]
+    B4 --> A1
+
+    A1 --> |完成| A2[insert 完成]
+
+    A2 --> |调用| I1[iterator]
+    I1 --> |判断 spilledMaps 是否为空| I2{spilledMaps.isEmpty}
+    I2 --> |是| I3[destructiveIterator currentMap.iterator]
+    I2 --> |否| I4[ExternalIterator 构造函数]
+    I4 --> I5[ExternalIterator.next]
+    I3 --> I6[读取 currentMap 内容]
+    I6 --> |返回结果| I7[iterator 结束]
+    I5 --> I7
+```

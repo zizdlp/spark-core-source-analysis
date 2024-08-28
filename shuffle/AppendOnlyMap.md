@@ -94,3 +94,69 @@ graph TD
 - **查找成功**：找到目标键并返回对应的值。
 
 通过这种方法，`AppendOnlyMap` 可以在存在冲突的情况下有效地查找数据。
+
+## 迭代器
+
+迭代器在排序过程中破坏AppendOnlyMap 的结构，因此排序完成后，原来的 ExternalAppendOnlyMap 将无法再被有效地使用。
+
+### 代码分析
+
+1. **标记为销毁**：
+   ```scala
+   destroyed = true
+   ```
+   设置 `destroyed` 标志为 `true`，表示 `ExternalAppendOnlyMap` 在排序后将不再有效。
+
+2. **重新排列 KV 对**：
+   ```scala
+   var keyIndex, newIndex = 0
+   while (keyIndex < capacity) {
+     if (data(2 * keyIndex) != null) {
+       data(2 * newIndex) = data(2 * keyIndex)
+       data(2 * newIndex + 1) = data(2 * keyIndex + 1)
+       newIndex += 1
+     }
+     keyIndex += 1
+   }
+   ```
+   这里的代码将非空的键值对从 `data` 数组的前半部分移到数组的前面。`data` 数组的索引 `2 * keyIndex` 用于存储键，`2 * keyIndex + 1` 用于存储值。这个过程将所有有效的键值对整理到数组的开头，同时保持它们的顺序。
+
+3. **断言**：
+   
+   ```scala
+   assert(curSize == newIndex + (if (haveNullValue) 1 else 0))
+   ```
+   这个断言确保排序后的元素个数与当前大小 `curSize` 匹配。`haveNullValue` 是一个布尔标志，指示是否有 `null` 值存在。
+   
+4. **排序**：
+   ```scala
+   new Sorter(new KVArraySortDataFormat[K, AnyRef]).sort(data, 0, newIndex, keyComparator)
+   ```
+   使用 `Sorter` 对 `data` 数组中的键值对进行排序。排序范围是从 `0` 到 `newIndex`，使用 `keyComparator` 进行比较。
+
+5. **返回迭代器**：
+   ```scala
+   new Iterator[(K, V)] {
+     var i = 0
+     var nullValueReady = haveNullValue
+     def hasNext: Boolean = (i < newIndex || nullValueReady)
+     def next(): (K, V) = {
+       if (nullValueReady) {
+         nullValueReady = false
+         (null.asInstanceOf[K], nullValue)
+       } else {
+         val item = (data(2 * i).asInstanceOf[K], data(2 * i + 1).asInstanceOf[V])
+         i += 1
+         item
+       }
+     }
+   }
+   ```
+   这个匿名迭代器实现了 `Iterator` 接口，提供按排序顺序访问键值对的功能。
+   
+   - `hasNext`：检查是否还有元素可以迭代。它会在 `i` 小于 `newIndex` 或者 `nullValueReady` 为 `true` 时返回 `true`。
+   - `next`：返回下一个键值对。如果有 `null` 值，首先返回 `null` 值，然后继续返回排序后的元素。
+
+### 总结
+
+`destructiveSortedIterator` 方法通过破坏 `ExternalAppendOnlyMap` 的有效性，将键值对按键排序，并返回一个迭代器用于遍历排序后的键值对。这种方法的优势是可以在排序过程中节省内存，但代价是破坏了原有的数据结构。因此，该方法适用于只需要一次性排序和遍历的场景。
