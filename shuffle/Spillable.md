@@ -1,6 +1,6 @@
 # Spillable
 
-Spillable 是管理溢出的抽象类，
+Spillable 是管理溢出的抽象类
 
 ```mermaid
 classDiagram
@@ -13,9 +13,9 @@ class Spillable {
 }
 ```
 
-## maybespill
+## maybeSpill
 
-上层insert数据时，会检查内存，然后发现预估的内存超过阈值就调用这个maybespill。这里每32次insert会请求扩张内存，当`扩张失败`或者`insert`数量达到临界值都会进行磁盘溢出。
+继承类insert数据时，会检查内存，然后发现预估的内存超过阈值就调用这个maybeSpill。这里每32次insert会请求扩张内存，当`扩张失败`或者`insert`数量达到临界值都会进行磁盘溢出。
 
 ```mermaid
 flowchart TD

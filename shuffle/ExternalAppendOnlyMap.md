@@ -13,7 +13,7 @@
 
 ### 主要方法
 
-1. **`insert(key: K, value: V)`**：将指定的键值对插入到映射中。如果当前内存不足，会将数据溢出到磁盘。
+1. **`insert(key: K, value: V)`**：将指定的键值对插入到映射中。如果当前内存不足，会将数据溢出到磁盘。**相同key根据combiner合并**
 
 2. **`insertAll(entries: Iterator[Product2[K, V]])`**：将一组键值对插入到映射中，并在内存不足时将数据溢出到磁盘。
 
@@ -25,57 +25,12 @@
 
 6. **`destructiveIterator(inMemoryIterator: Iterator[(K, C)])`**：返回一个破坏性迭代器，遍历当前内存中的所有键值对。
 
-### 使用例子
-
-假设你有一个包含大量数据的应用场景，希望在内存不足时将数据溢出到磁盘，你可以使用 `ExternalAppendOnlyMap` 来处理：
-
-```scala
-// 创建 ExternalAppendOnlyMap 实例
-val externalMap = new ExternalAppendOnlyMap[String, Int, Int](
-  createCombiner = (v: Int) => v,
-  mergeValue = (c: Int, v: Int) => c + v,
-  mergeCombiners = (c1: Int, c2: Int) => c1 + c2
-)
-
-// 插入数据
-externalMap.insert("apple", 1)
-externalMap.insert("banana", 2)
-externalMap.insert("apple", 3)
-
-// 处理大批量数据
-val largeData: Iterator[(String, Int)] = ...
-externalMap.insertAll(largeData)
-
-// 获取数据迭代器
-val iterator = externalMap.iterator
-
-// 遍历数据
-while (iterator.hasNext) {
-  val (key, combinedValue) = iterator.next()
-  println(s"Key: $key, Combined Value: $combinedValue")
-}
-```
-
-在这个例子中，`ExternalAppendOnlyMap` 自动管理内存的使用，并在内存不足时将数据溢出到磁盘，确保应用程序能够处理大量数据而不会导致内存溢出。
-
-当然可以！下面是 `ExternalAppendOnlyMap` 类的 Mermaid 类图示例，其中主要成员后面添加了注释“//”：
-
 ```mermaid
 classDiagram
     class ExternalAppendOnlyMap {
         <<DeveloperApi>>
         -currentMap : SizeTrackingAppendOnlyMap // 当前内存映射
         -spilledMaps : ArrayBuffer<DiskMapIterator> // 溢出映射
-        -sparkConf : SparkConf // Spark 配置
-        -diskBlockManager : DiskBlockManager // 磁盘块管理器
-        -serializerBatchSize : Int // 序列化器批次大小
-        -_diskBytesSpilled : Long // 溢出的磁盘字节数
-        -fileBufferSize : Int // 文件缓冲区大小
-        -writeMetrics : ShuffleWriteMetrics // 写入指标
-        -_peakMemoryUsedBytes : Long // 峰值内存使用字节数
-        -keyComparator : HashComparator // 键比较器
-        -ser : Serializer // 序列化器
-        -readingIterator : SpillableIterator // 读取迭代器
         -numSpills() : Int // 已溢出的文件数量
         -insert(key, value) : Unit // 插入键值对
         -insertAll(entries) : Unit // 插入条目
@@ -126,3 +81,7 @@ graph TD
     I6 --> |返回结果| I7[iterator 结束]
     I5 --> I7
 ```
+
+### merge-sort
+
+上面每次调用迭代器，里面实际上就进行排序，因此spill到磁盘的结果是有序的，memory是无序的。当ExternamAppendOnlyMap调用迭代器时，需要合并两个内容。这里内存中的map先调用迭代器变为有序，然后进行归并排序。
