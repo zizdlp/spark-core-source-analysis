@@ -2,6 +2,8 @@
 
 ANTLR（Another Tool for Language Recognition）是一种强大的解析工具，用于构建编译器、解释器、转换器和数据处理工具。它帮助开发者从输入文本中生成解析树（parse tree），从而理解和处理结构化的输入数据。
 
+![basic-data-flow](./assets/basic-data-flow.png)
+
 ## ANTLR 的主要功能
 
 1. **词法分析（Lexical Analysis）**：
