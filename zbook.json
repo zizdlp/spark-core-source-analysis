@@ -82,6 +82,19 @@
             "sublayouts": null
           }
         ]
+      },
+      {
+        "title": "Optimizer",
+        "relative_path": "Optimizer",
+        "isdir": true,
+        "sublayouts": [
+          {
+            "title": "ANTLR",
+            "relative_path": "Optimizer/ANTLR",
+            "isdir": false,
+            "sublayouts": null
+          }
+        ]
       }
     ]
   },
